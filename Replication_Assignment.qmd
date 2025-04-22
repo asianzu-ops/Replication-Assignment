@@ -139,7 +139,6 @@ plot(g,
 
 ```{r}
 
-
 #For this section I used the igraph and ggraph packages to visualize the proximity network of chimpanzees, the graph_from_data_frame() function from igraph to create the graph from an edge list earlier on calculated. The layout_with_fr() function to position the nodes using the Fruchterman-Reingold layout. The chull() function to compute convex hulls around neighborhoods, and ggraph() for plotting the network with convex hulls overlay. Nodes are colored based on neighborhoods (Central, East, West), and the edge connections are visualized to highlight proximity relationships within the network but it still didnt yield. 
 
 
