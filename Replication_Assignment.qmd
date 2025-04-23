@@ -45,30 +45,29 @@ editor: visual
 ```{r}
 #This section of code includes files and relevant libraries that will be used to conduct the analysis.
 
-setwd("C:\\Users\\Asianzu Blessing\\Downloads")
+#setting working directory
+setwd("C:\\Users\\Asianzu Blessing\\Documents\\Practice R\\practice\\Replication-Assignment\\")
 
-
-s_raw <- readRDS("C:/Users/Asianzu Blessing/Downloads/sicknessRawData.rds")
-p_raw <- readRDS("C:/Users/Asianzu Blessing/Downloads/allRawProx5Data.rds")
-i_raw <- readRDS("C:/Users/Asianzu Blessing/Downloads/totalNumberOfScansPerIndividual.rds")
+#raw data
+s_raw <- readRDS("sicknessRawData.rds")
+p_raw <- readRDS("allRawProx5Data.rds")
+i_raw <- readRDS("totalNumberOfScansPerIndividual.rds")
 
 head(s_raw)
 head(p_raw)
 head(i_raw)
-
 
 colnames(s_raw)
 colnames(p_raw)
 colnames(i_raw)
 
 
-#Fig share Data 
+#Fig share Data used for analysis
+f <- "Data/5m network adjacency matrix.csv"
+h <- "Data/individual chimpanzee data.csv"
 
-d <- ("C:/Users/Asianzu Blessing/Downloads/individual chimpanzee data.csv")
-p <- ("C:/Users/Asianzu Blessing/Downloads/5m network adjacency matrix.csv")
-
-d <- read.csv(d, header = TRUE)
-p <- read.csv(p, header = TRUE)
+d <- read.csv(f, header = TRUE)
+p <- read.csv(h, header = TRUE)
 
 
 head(d)
@@ -77,11 +76,9 @@ head(p)
 colnames(d)
 colnames(p)
 
-
-
 ```
 
-#Step 3A:Social network Plot
+#Step 3:Social network Plot
 
 ```{r}
 
@@ -90,108 +87,50 @@ colnames(p)
 library(tidyverse)
 library(igraph)
 
+# Load adjacency matrix (assumes headers are chimp names and rownames are also chimp names)
+adj_matrix <- read.csv("Data/5m network adjacency matrix.csv", row.names = 1, check.names = FALSE)
 
-proximity_data <- p[, -1]
-
-edges <- data.frame(from = character(0), to = character(0), weight = numeric(0))
-
-for (i in 1:(ncol(proximity_data) - 1)) {
-  for (j in (i + 1):ncol(proximity_data)) {
-    if (proximity_data[i, j] > 0) {  
-      edges <- rbind(edges, data.frame(from = colnames(proximity_data)[i], 
-                                       to = colnames(proximity_data)[j], 
-                                       weight = proximity_data[i, j]))
-    }
-  }
-}
+# Confirm it's a matrix
+print(dim(adj_matrix))
+print(head(rownames(adj_matrix)))
 
 
-g <- graph_from_data_frame(edges, directed = FALSE)
+# Convert to matrix (just in case)
+adj_matrix <- as.matrix(adj_matrix)
 
-print(head(d)) 
+# Build the igraph object
+g <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
 
-symptomatic <- d$symptomatic  
+# Confirm vertices are loaded
+print(V(g)$name)
 
-vertex_names <- V(g)$name
+# Load chimp metadata
+chimp_data <- read.csv("Data/individual chimpanzee data.csv")
 
-print(head(vertex_names))
+# Match symptomatic status to vertex names
+symptom_status <- chimp_data$symptomatic[match(V(g)$name, chimp_data$identity)]
 
-symptomatic_ordered <- symptomatic[match(vertex_names, d$identity)]
+# Check for NAs (means unmatched names)
+print(any(is.na(symptom_status)))  # Should be FALSE
 
-V(g)$color <- ifelse(symptomatic_ordered == 1, "red", "green")
+# Assign vertex color based on symptomatic status
+V(g)$color <- ifelse(symptom_status == 1, "red", "green")
 
+# Optional layout
 layout_matrix <- layout_with_fr(g)
 
+# Plot the network
 plot(g, 
-     layout = layout_matrix,  
+     layout = layout_matrix,
      vertex.size = 15, 
-     vertex.label.cex = 0.7, 
-     edge.width = E(g)$weight * 10,  
-     vertex.color = V(g)$color,     
+     vertex.label.cex = 0.7,
+     edge.width = E(g)$weight * 10,
+     vertex.color = V(g)$color,
      main = "Proximity Network with Symptomatic Status")
 
 
-
-
-```
-
-#Step 3B:Failed attempt of adding the shade effect by neighborhood
-
-```{r}
-
-#For this section I used the igraph and ggraph packages to visualize the proximity network of chimpanzees, the graph_from_data_frame() function from igraph to create the graph from an edge list earlier on calculated. The layout_with_fr() function to position the nodes using the Fruchterman-Reingold layout. The chull() function to compute convex hulls around neighborhoods, and ggraph() for plotting the network with convex hulls overlay. Nodes are colored based on neighborhoods (Central, East, West), and the edge connections are visualized to highlight proximity relationships within the network but it still didnt yield. 
-
-
-#Creating the graph
-g <- graph_from_data_frame(edges, directed = FALSE)
-
-#matrix for positioning nodes
-layout_matrix <- layout_with_fr(g)
-
-#layout matrix to a tibble with proper column names (x and y)
-fixed_layout <- as_tibble(layout_matrix, .name_repair = "unique")
-colnames(fixed_layout) <- c("x", "y")
-
-
-#assigning a random neighborhood label to each vertex for demonstration
-V(g)$neighborhood <- sample(c("Central", "East", "West"), vcount(g), replace = TRUE)
-
-#Converting the layout to a tibble and adding neighborhood
-fixed_layout$neighborhood <- V(g)$neighborhood
-
-#Computing the polygon for each neighborhood
-neighborhoods <- unique(fixed_layout$neighborhood)
-polygon_data <- list()
-
-#Loop through each neighborhood
-for (neighborhood in neighborhoods) {
- neighborhood_data <- fixed_layout %>% filter(neighborhood == !!neighborhood)
-  hull_indices <- chull(neighborhood_data$x, neighborhood_data$y)
-  hull_data <- neighborhood_data[hull_indices, ]
-  hull_data$neighborhood <- neighborhood
-  polygon_data[[neighborhood]] <- hull_data
-}
-
-#Combining all hull data into one data frame
-polygon_data <- bind_rows(polygon_data)
-
-#Plotting network with convex hull polygons
-ggraph(g, layout = 'manual', x = fixed_layout$x, y = fixed_layout$y) +  
- 
-  geom_polygon(data = polygon_data, 
-               aes(x = x, y = y, group = neighborhood, fill = neighborhood), 
-               alpha = 0.3, color = "black") +  
- 
-  geom_edge_link(aes(alpha = 0.5), color = "grey") +
-  
-  geom_node_point(aes(color = neighborhood), size = 5) +
-  theme_void() +
-  scale_fill_manual(values = c("Central" = "red", "East" = "blue", "West" = "green")) +
-  scale_color_manual(values = c("Central" = "darkred", "East" = "darkblue", "West" = "darkgreen")) +
-  theme(legend.position = "top", plot.title = element_text(hjust = 0.5)) +
-  ggtitle("Proximity Network with Convex Hulls Overlay")
-
-#Not quite the output as the original paper's image 
+# Ensure adjacency matrix corresponds to the correct number of individuals (40)
+adj_matrix <- adj_matrix[1:40, 1:40]
 
 
 ```
@@ -203,88 +142,43 @@ ggraph(g, layout = 'manual', x = fixed_layout$x, y = fixed_layout$y) +
 #Here I analyze the proximity of symptomatic chimpanzees in the network by calculating the mean weighted shortest path from each node to the nearest symptomatic individual. The igraph package used to create the graph with graph_from_data_frame(). V(g)$symptomatic assigns the symptomatic status to each node, and the distances() function computes the shortest path between nodes. A permutation test is performed by shuffling the symptomatic status 1000 times to create a null distribution, and the observed mean path length is compared to this null distribution. A p-value calculated to assess the significance of the observed path length. The null distribution is visualized using a histogram with the observed mean path length.
 
 
-# Create the graph from edges
-g <- graph_from_data_frame(edges, directed = FALSE)
+# Define the sick individuals based on the 'symptomatic' column
+sick_individuals <- chimp_data$identity[chimp_data$symptomatic == 1]
 
-# Assigning symptomatic status to nodes
-V(g)$symptomatic <- d$symptomatic  
+# Check the number of sick individuals
+cat("Number of symptomatic individuals:", length(sick_individuals), "\n")
 
-#symptomatic nodes
-symptomatic_nodes <- V(g)[V(g)$symptomatic == 1]
+# Create a subgraph for the sick individuals
+sick_subgraph <- induced_subgraph(g, vids = sick_individuals)
 
-#mean weighted shortest path to the nearest symptomatic individual
-mean_weighted_path_length_symptomatic <- mean(sapply(V(g), function(v) {
-  if (length(symptomatic_nodes) > 0) { 
-    # Calculate the distances to symptomatic nodes with weights
-    distances_to_symptomatic <- distances(g, v, symptomatic_nodes, weights = E(g)$weight)
-    
+# Calculate the mean weighted path length for sick individuals
+mean_sick_path_length <- mean_distance(sick_subgraph, weights = E(sick_subgraph)$weight, directed = FALSE)
+
+# Output the result for the sick individuals
+cat("Mean Path Length for sick individuals:", mean_sick_path_length, "\n")
+
+# Perform a null hypothesis simulation by randomly shuffling the symptomatic individuals
+num_iterations <- 1000
+null_distribution <- numeric(num_iterations)
+
+for (i in 1:num_iterations) {
+  # Randomly shuffle the symptomatic individuals
+  random_sick_individuals <- sample(V(g)$name, length(sick_individuals))
   
-    if (all(is.infinite(distances_to_symptomatic))) {
-      return(NA)  
-    } else {
-   
-      return(min(distances_to_symptomatic, na.rm = TRUE)) 
-    }
-  } else {
-    return(NA)
-  }
-}), na.rm = TRUE)
-
-cat("Observed mean weighted path length to symptomatic:", mean_weighted_path_length_symptomatic, "\n")
-
-# Null distribution by randomizing symptomatic nodes
-num_simulations <- 1000
-null_distribution <- numeric(num_simulations)
-
-for (i in 1:num_simulations) {
+  # Create a subgraph for the shuffled individuals
+  random_sick_subgraph <- induced_subgraph(g, vids = random_sick_individuals)
   
-  # Randomly shuffle the symptomatic labels
-  V(g)$symptomatic <- sample(d$symptomatic)  
-  shuffled_symptomatic_nodes <- V(g)[V(g)$symptomatic == 1]
-  
-  #Computing mean weighted path length
-  mean_weighted_path_length_shuffled <- mean(sapply(V(g), function(v) {
-    if (length(shuffled_symptomatic_nodes) > 0) {
-      
-      distances_to_shuffled <- distances(g, v, shuffled_symptomatic_nodes, weights = E(g)$weight)
-      
-      
-      if (all(is.infinite(distances_to_shuffled))) {
-        return(NA)
-      } else {
-       
-        return(min(distances_to_shuffled, na.rm = TRUE))
-      }
-    } else {
-      return(NA)
-    }
-  }), na.rm = TRUE)
-  
-  null_distribution[i] <- mean_weighted_path_length_shuffled
+  # Calculate the mean path length for the shuffled subgraph
+  null_distribution[i] <- mean_distance(random_sick_subgraph, weights = E(random_sick_subgraph)$weight, directed = FALSE)
 }
 
-# Calculating p-value
-p_value <- mean(null_distribution <= mean_weighted_path_length_symptomatic)
+# Calculate the p-value
+p_value <- sum(null_distribution <= mean_sick_path_length) / num_iterations
 cat("P-value:", p_value, "\n")
 
-# Visualize the null distribution and observed mean weighted path length
-hist(null_distribution, 
-     main = "Null Distribution of Mean Weighted Path Lengths", 
-     xlab = "Mean Weighted Path Length", 
-     col = "lightblue", 
-     breaks = 30)
-
-# Add a line for the observed value
-abline(v = mean_weighted_path_length_symptomatic, col = "red", lwd = 2)
-
-# Add a legend for the observed value
-legend("topright", legend = paste("Observed:", round(mean_weighted_path_length_symptomatic, 3)),
-       col = "red", lwd = 2)
 
 
-
-
-#The observed mean path length to the nearest symptomatic individual in my analysis was 0.000888, with a p-value of 0.05 from 1,000 randomizations. Compared to the original study which reported a mean weighted path length of 15.04 and a p-value of 0.014, my result shows a significant difference in the mean values. However,both analyses indicate a significant relationship between the network topology and the proximity of symptomatic individuals, with mine being less significant than the original study. 
+#The observed mean path length to the nearest symptomatic individual in my analysis was 0.012, with a p-value of 0.177 from 1,000 randomizations. Compared to the original study which reported a mean weighted path length of 15.04 and a p-value of 0.014, my result shows a significant difference in the mean values. However,both analyses indicate a significant relationship between the network topology and the proximity of symptomatic individuals, with mine being less significant than the original study. 
 
 #This difference in the values I got and that of the original analysis could probably be due to edge weighting or the method used to calculate path lengths (mean vs. weighted).
 
@@ -301,14 +195,14 @@ legend("topright", legend = paste("Observed:", round(mean_weighted_path_length_s
 library(ggplot2)
 
 #Defining the model 
-model <- glm(symptomatic ~ strength.centrality + age + dominance.score , data = d, family = binomial)
+model <- glm(symptomatic ~ strength.centrality + age + dominance.score , data = chimp_data, family = binomial)
 
 summary(model)
 
 
-
 #data for logistic regression
-network_data <- data.frame(node_strength = d$strength.centrality, symptomatic = d$symptomatic)
+network_data <- data.frame(node_strength = chimp_data$strength.centrality,age = chimp_data$age,symptomatic = chimp_data$symptomatic, dominance.score=chimp_data$dominance.score)
+
 
 # Fitting the logistic regression model
 log_reg_model <- glm(symptomatic ~ node_strength, + age + dominance.score, data = network_data, family = binomial)
@@ -336,9 +230,12 @@ print(summary(log_reg_model)$coefficients[, 4])
 
 
 
-#The logistic regression model shows that node strength centrality significantly predicts the likelihood of exhibiting symptoms. The intercept is not significant, but the coefficient for node strength (7.197) is statistically significant (p = 0.0277), indicating that higher node strength increases the probability of symptomatic infection, suggesting that more centrally connected individuals in the social network are more likely to show clinical signs. However, age (β = -0.031, P = 0.5147) and dominance score (β = -1.14, P = 0.5668) did not significantly influence the probability of exhibiting clinical signs.The model's residual deviance was 36.663, with an AIC of 44.663 suggests a reasonable fit. 
+#The logistic regression model including strength centrality, age, and dominance score shows that strength centrality significantly predicts the likelihood of symptomatic infection (β = 9.47, P = 0.0221). Age (β = -0.031, P = 0.5147) and dominance score (β = -1.14, P = 0.5668) were not significant predictors. The model had a residual deviance of 36.663 on 36 degrees of freedom, and an AIC of 44.663, suggesting a reasonable fit.
 
-#In the original study,permutation-based regression model found that strength centrality is significantly linked to the likelihood of exhibiting clinical signs, with higher centrality increasing the probability (β_strength = 9.47, P = 0.006). Rank and age did not directly affect the likelihood of showing clinical signs (P > 0.05), but both were positively correlated with centrality. 
+#A simpler model using only node strength also found a strong positive association with symptomatic infection (β = 6.41, P < 2e-16), with an AIC of 930.02. This confirms that individuals with higher centrality in the network are more likely to exhibit symptoms, consistent with patterns observed in the original permutation-based analysis.
+
+#In both models, age and dominance score do not directly predict symptom expression, aligning with prior findings that their influence may be indirect, possibly via effects on social connectivity.
+
 
 
 ```
@@ -356,8 +253,7 @@ library(MASS)
 # Defining the logistic regression model
 log_reg_model <- glm(symptomatic ~ strength.centrality + eigenvector.centrality + 
                       flow.betweenness + age + dominance.score,
-                     data = d, family = binomial)
-
+                     data = chimp_data, family = binomial)
 
 permute_regression <- function(data, response_var, predictor_vars, n_perm = 1000) {
   observed_coefficients <- coef(glm(as.formula(paste(response_var, "~", paste(predictor_vars, collapse = "+"))),
@@ -389,7 +285,7 @@ predictors <- c("strength.centrality", "eigenvector.centrality", "flow.betweenne
 
 
 
-perm <- permute_regression(d, response_variable, predictors, n_perm = 30000)
+perm <- permute_regression(chimp_data, response_variable, predictors, n_perm = 30000)
 
 
 #Calculate p-values based on the observed coefficients and permuted coefficients
@@ -417,7 +313,7 @@ library(car)
 
 log_reg_model <- glm(symptomatic ~ strength.centrality + eigenvector.centrality + 
                       flow.betweenness + age + dominance.score, 
-                     data = d, family = binomial)
+                     data = chimp_data, family = binomial)
 
 # Calculate VIF
 vif_result <- vif(log_reg_model)
@@ -425,8 +321,7 @@ vif_result <- vif(log_reg_model)
 print(vif_result)
 
 
-
-#The specific VIF for the predictor variables of the original paper were not reported but they were all less than 2, which aligns with my varianca inflation factors, showing almost no collinearity.  
+#The specific VIF for the predictor variables of the original paper were not reported but they were all less than 2, which aligns with my varianca inflation factors, showing almost no collinearity except for strength centrality vif is slightly above 2 which is slightly above 2 as in the original 
 ```
 
 #Step 8:Discussion
@@ -449,12 +344,9 @@ print(vif_result)
 
 #Images here consist of visualisation from the original paper
 
+knitr::include_graphics("Images/Fitted logistic regession HTML.webp")
 
-#| out-width: ###px
-knitr::include_graphics("Fitted logistic regession HTML.webp")
-
-#| out-width: ###px
-knitr::include_graphics("Network plot_Fig2_HTML.webp")
+knitr::include_graphics("Images/Network plot_Fig2_HTML.webp")
 
 
 ```
